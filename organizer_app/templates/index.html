@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Local Organizer</title>
+    <link rel="stylesheet" href="/static/style.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Local-first Organizer</p>
+          <h1>Plain files for notes, meetings, and agent-assisted follow-through.</h1>
+          <p class="lede">
+            Everything stays in <code>{{ data_root }}</code>. Capture quickly, revise later,
+            and hand context to Hermes or Codex without leaving your Mac mini.
+          </p>
+        </div>
+        <div class="hero-side">
+          <div class="status-card">
+            <p>Agent command</p>
+            <strong>{{ "Configured" if agent_configured else "Not configured" }}</strong>
+            <span>Set <code>ORGANIZER_AGENT_COMMAND</code> to process notes and meetings locally.</span>
+          </div>
+          <form action="/" method="get" class="search-card stack compact">
+            <label for="q">Search your local archive</label>
+            <input id="q" type="text" name="q" value="{{ query }}" placeholder="Notes, meetings, attendees, tags" />
+            <button type="submit">Search</button>
+          </form>
+        </div>
+      </header>
+
+      {% if status_message %}
+      <section class="flash success">{{ status_message }}</section>
+      {% endif %}
+      {% if error_message %}
+      <section class="flash error">{{ error_message }}</section>
+      {% endif %}
+
+      <section class="workspace">
+        <section class="column compose-column">
+          <section class="panel">
+            <div class="panel-header">
+              <h2>New Note</h2>
+              <span>Markdown body</span>
+            </div>
+            <form action="/notes" method="post" class="stack">
+              <input type="text" name="title" placeholder="Scratchpad, project log, idea dump" />
+              <input type="text" name="tags" placeholder="Tags, comma-separated" />
+              <textarea name="body" rows="10" placeholder="Write freely. The note is stored as Markdown with YAML front matter."></textarea>
+              <button type="submit">Save note</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <div class="panel-header">
+              <h2>New Meeting</h2>
+              <span>Transcript-first</span>
+            </div>
+            <form action="/meetings" method="post" enctype="multipart/form-data" class="stack">
+              <input type="text" name="title" placeholder="Optional title. If blank, the file name or timestamp is used." />
+              <input type="text" name="attendees" placeholder="Attendees, comma-separated" />
+              <textarea name="transcript" rows="10" placeholder="Paste a transcript, or upload a text export from Whisper Flow or Voice Memos."></textarea>
+              <label class="file-field">
+                <span>Transcript file</span>
+                <input type="file" name="transcript_file" />
+              </label>
+              <button type="submit">Save meeting</button>
+            </form>
+          </section>
+        </section>
+
+        <section class="column library-column">
+          <section class="panel library-panel">
+            <div class="panel-header">
+              <h2>Notes</h2>
+              <span>{{ notes|length }}</span>
+            </div>
+            <div class="items">
+              {% for note in notes %}
+              <a class="item-link" href="/notes/{{ note.slug }}{% if query %}?q={{ query|urlencode }}{% endif %}">
+                <article class="item {% if selected_note and selected_note.slug == note.slug %}active{% endif %}">
+                  <div class="item-header">
+                    <h3>{{ note.title }}</h3>
+                    <span class="meta">{{ note.updated_at.strftime("%b %d") }}</span>
+                  </div>
+                  <p>{{ note.body[:140] }}{% if note.body|length > 140 %}...{% endif %}</p>
+                  {% if note.tags %}
+                  <p class="chips">
+                    {% for tag in note.tags %}
+                    <span>{{ tag }}</span>
+                    {% endfor %}
+                  </p>
+                  {% endif %}
+                </article>
+              </a>
+              {% else %}
+              <p class="empty">No notes yet.</p>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="panel library-panel">
+            <div class="panel-header">
+              <h2>Meetings</h2>
+              <span>{{ meetings|length }}</span>
+            </div>
+            <div class="items">
+              {% for meeting in meetings %}
+              <a class="item-link" href="/meetings/{{ meeting.meeting_id }}{% if query %}?q={{ query|urlencode }}{% endif %}">
+                <article class="item {% if selected_meeting and selected_meeting.meeting_id == meeting.meeting_id %}active{% endif %}">
+                  <div class="item-header">
+                    <h3>{{ meeting.title }}</h3>
+                    <span class="meta">{{ meeting.updated_at.strftime("%b %d") }}</span>
+                  </div>
+                  <p>{{ meeting.transcript[:140] }}{% if meeting.transcript|length > 140 %}...{% endif %}</p>
+                  {% if meeting.attendees %}
+                  <p class="chips">
+                    {% for attendee in meeting.attendees %}
+                    <span>{{ attendee }}</span>
+                    {% endfor %}
+                  </p>
+                  {% endif %}
+                </article>
+              </a>
+              {% else %}
+              <p class="empty">No meetings yet.</p>
+              {% endfor %}
+            </div>
+          </section>
+        </section>
+
+        <section class="column detail-column">
+          {% if selected_note %}
+          <section class="panel detail-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Note</p>
+                <h2>{{ selected_note.title }}</h2>
+              </div>
+              <form action="/process/note/{{ selected_note.slug }}" method="post">
+                <button type="submit" class="secondary">Process with agent</button>
+              </form>
+            </div>
+            <p class="meta">
+              Updated {{ selected_note.updated_at.strftime("%Y-%m-%d %H:%M") }}
+              · <code>{{ selected_note.slug }}.md</code>
+            </p>
+            <form action="/notes/{{ selected_note.slug }}" method="post" class="stack">
+              <input type="text" name="title" value="{{ selected_note.title }}" />
+              <input type="text" name="tags" value="{{ selected_note.tags|join(', ') }}" />
+              <textarea name="body" rows="18">{{ selected_note.body }}</textarea>
+              <button type="submit">Update note</button>
+            </form>
+            <div class="detail-block">
+              <strong>Latest agent output</strong>
+              {% if selected_note_agent_output %}
+              <pre>{{ selected_note_agent_output }}</pre>
+              {% else %}
+              <p class="empty">No agent output saved yet.</p>
+              {% endif %}
+            </div>
+          </section>
+          {% elif selected_meeting %}
+          <section class="panel detail-panel">
+            <div class="panel-header">
+              <div>
+                <p class="eyebrow">Meeting</p>
+                <h2>{{ selected_meeting.title }}</h2>
+              </div>
+              <form action="/process/meeting/{{ selected_meeting.meeting_id }}" method="post">
+                <button type="submit" class="secondary">Process with agent</button>
+              </form>
+            </div>
+            <p class="meta">
+              Updated {{ selected_meeting.updated_at.strftime("%Y-%m-%d %H:%M") }}
+              · <code>{{ selected_meeting.meeting_id }}</code>
+            </p>
+            <form action="/meetings/{{ selected_meeting.meeting_id }}" method="post" enctype="multipart/form-data" class="stack">
+              <input type="text" name="title" value="{{ selected_meeting.title }}" />
+              <input type="text" name="attendees" value="{{ selected_meeting.attendees|join(', ') }}" />
+              <textarea name="transcript" rows="14">{{ selected_meeting.transcript }}</textarea>
+              <textarea name="summary" rows="8" placeholder="Editable summary or next-step notes">{{ selected_meeting.summary }}</textarea>
+              <label class="file-field">
+                <span>Replace transcript from file</span>
+                <input type="file" name="transcript_file" />
+              </label>
+              <label class="file-field">
+                <span>Add attachments</span>
+                <input type="file" name="attachment_files" multiple />
+              </label>
+              <button type="submit">Update meeting</button>
+            </form>
+
+            <div class="detail-grid">
+              <div class="detail-block">
+                <strong>Stored summary</strong>
+                {% if selected_meeting.summary %}
+                <pre>{{ selected_meeting.summary }}</pre>
+                {% else %}
+                <p class="empty">No summary saved yet.</p>
+                {% endif %}
+              </div>
+              <div class="detail-block">
+                <strong>Source files</strong>
+                {% if selected_meeting.source_files %}
+                <ul class="plain-list">
+                  {% for path in selected_meeting.source_files %}
+                  <li><code>{{ path }}</code></li>
+                  {% endfor %}
+                </ul>
+                {% else %}
+                <p class="empty">No attachments copied into this meeting yet.</p>
+                {% endif %}
+              </div>
+            </div>
+
+            <div class="detail-block">
+              <strong>Latest agent output</strong>
+              {% if selected_meeting_agent_output %}
+              <pre>{{ selected_meeting_agent_output }}</pre>
+              {% else %}
+              <p class="empty">No agent output saved yet.</p>
+              {% endif %}
+            </div>
+          </section>
+          {% else %}
+          <section class="panel detail-panel empty-state">
+            <p class="eyebrow">Workspace</p>
+            <h2>Open a note or meeting to edit it.</h2>
+            <p class="lede">
+              This view is for refining existing notes, cleaning up imported transcripts,
+              and reviewing what the local agent returned.
+            </p>
+          </section>
+          {% endif %}
+        </section>
+      </section>
+    </main>
+  </body>
+</html>
